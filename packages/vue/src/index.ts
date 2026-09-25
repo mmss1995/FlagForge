@@ -77,6 +77,15 @@ export function useFlagDetail<T>(key: MaybeRefOrGetter<string>, defaultValue: T)
   })
 }
 
+/** Every flag's value for the current context. */
+export function useAllFlags(): ComputedRef<Record<string, unknown>> {
+  const { client, revision } = useState()
+  return computed(() => {
+    void revision.value
+    return client.allFlags()
+  })
+}
+
 export function useFlagsStatus(): Readonly<ShallowRef<ClientStatus>> {
   return useState().status
 }

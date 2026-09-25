@@ -1,0 +1,10 @@
+{
+  "name": "@flagforge/example-shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./personas": "./personas.ts",
+    "./shop.css": "./shop.css"
+  }
+}

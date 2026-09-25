@@ -3,7 +3,7 @@ import { booleanFlag, FakeEventSource, payload, silentLogger } from '@flagforge/
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, ref } from 'vue'
-import { createFlagForge, FlagForgeFeature, useFlag, useFlagDetail, useFlagsStatus, useIdentify } from './index'
+import { createFlagForge, FlagForgeFeature, useAllFlags, useFlag, useFlagDetail, useFlagsStatus, useIdentify } from './index'
 
 const stringFlag = (key: string, value: string) => booleanFlag(key, { variations: [{ id: 'v', value }], offVariationId: 'v', fallthrough: { kind: 'variation', variationId: 'v' } })
 
@@ -79,6 +79,13 @@ describe('@flagforge/vue', () => {
     await push(1, booleanFlag('a'))
     expect(result.status.value).toBe('ready')
     expect(result.detail.value.reason).toEqual({ kind: 'FALLTHROUGH', inRollout: false })
+  })
+
+  it('lists all flags reactively', async () => {
+    const { result } = withSetup(() => useAllFlags())
+    expect(result.value).toEqual({})
+    await push(1, booleanFlag('a'), booleanFlag('b', { enabled: false }))
+    expect(result.value).toEqual({ a: true, b: false })
   })
 
   it('provides $flag in templates', async () => {

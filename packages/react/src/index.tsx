@@ -59,6 +59,18 @@ export function useFlagDetail<T>(key: string, defaultValue: T): EvaluationDetail
   return useSyncExternalStore(useSubscribe(client), getSnapshot, getSnapshot)
 }
 
+/** Every flag's value for the current context, e.g. for a debug panel or analytics payload. */
+export function useAllFlags(): Record<string, unknown> {
+  const client = useFlagForgeClient()
+  const cache = useRef<{ revision: number; flags: Record<string, unknown> } | undefined>(undefined)
+
+  const getSnapshot = () => {
+    if (cache.current?.revision !== client.revision) cache.current = { revision: client.revision, flags: client.allFlags() }
+    return cache.current.flags
+  }
+  return useSyncExternalStore(useSubscribe(client), getSnapshot, getSnapshot)
+}
+
 /** Connection state, e.g. to show a banner while flags may be outdated. */
 export function useFlagsStatus(): ClientStatus {
   const client = useFlagForgeClient()

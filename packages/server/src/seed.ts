@@ -3,6 +3,12 @@ import { createStore } from './createServer'
 import { FlagService, type CreateFlagInput, type UpdateTargetingInput } from './service'
 
 /** Demo flags used by the example apps. Safe to run repeatedly: existing flags are left alone. */
+const proPlanRule = {
+  description: 'Pro plan',
+  clauses: [{ attribute: 'plan', operator: 'in' as const, values: ['pro'] }],
+  serve: { kind: 'variation' as const, variationId: 'pro' },
+}
+
 type DemoFlag = {
   flag: CreateFlagInput
   /** Served while the flag is off, in every environment. Defaults to the last variation. */
@@ -105,16 +111,8 @@ const demoFlags: DemoFlag[] = [
     },
     offVariationId: 'standard',
     targeting: {
-      development: {
-        enabled: true,
-        rules: [
-          {
-            description: 'Pro plan',
-            clauses: [{ attribute: 'plan', operator: 'in', values: ['pro'] }],
-            serve: { kind: 'variation', variationId: 'pro' },
-          },
-        ],
-      },
+      development: { enabled: true, rules: [proPlanRule] },
+      production: { enabled: true, rules: [proPlanRule] },
     },
   },
   {

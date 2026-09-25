@@ -3,7 +3,7 @@ import { booleanFlag, FakeEventSource, payload, silentLogger } from '@flagforge/
 import { act, render, renderHook, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { Feature, FlagForgeProvider, useFlag, useFlagDetail, useFlagsStatus, useIdentify } from './index'
+import { Feature, FlagForgeProvider, useAllFlags, useFlag, useFlagDetail, useFlagsStatus, useIdentify } from './index'
 
 const stringFlag = (key: string, value: string) => booleanFlag(key, { variations: [{ id: 'v', value }], offVariationId: 'v', fallthrough: { kind: 'variation', variationId: 'v' } })
 
@@ -76,6 +76,17 @@ describe('@flagforge/react', () => {
     const first = result.current
     rerender()
     expect(result.current).toBe(first)
+  })
+
+  it('lists all flags and updates when any of them changes', () => {
+    push(1, booleanFlag('a'), booleanFlag('b'))
+    const { result, rerender } = renderHook(() => useAllFlags(), { wrapper })
+    expect(result.current).toEqual({ a: true, b: true })
+    const first = result.current
+    rerender()
+    expect(result.current).toBe(first)
+    push(2, booleanFlag('a'), booleanFlag('b', { enabled: false }))
+    expect(result.current).toEqual({ a: true, b: false })
   })
 
   it('reports the connection status', () => {
