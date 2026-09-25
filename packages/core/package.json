@@ -1,0 +1,16 @@
+{
+  "name": "@flagforge/core",
+  "version": "0.1.0",
+  "description": "Flag schema and deterministic evaluation engine shared by the FlagForge server and SDKs",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
+  }
+}

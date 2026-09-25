@@ -1,0 +1,33 @@
+{
+  "name": "flagforge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Self-hosted feature flags with real-time streaming and native SDKs for React and Vue",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "examples/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "concurrently -n server,dashboard -c blue,magenta \"npm run dev -w @flagforge/server\" \"npm run dev -w @flagforge/dashboard\"",
+    "dev:examples": "concurrently -n react,vue -c cyan,green \"npm run dev -w react-demo\" \"npm run dev -w vue-demo\"",
+    "build": "npm run build -w @flagforge/dashboard && npm run build -w @flagforge/server",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "oxlint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "seed": "npm run seed -w @flagforge/server"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "concurrently": "^10.0.5",
+    "oxlint": "^1.85.0",
+    "typescript": "~6.0.2",
+    "vitest": "^5.0.2"
+  }
+}
