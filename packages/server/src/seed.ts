@@ -3,7 +3,14 @@ import { createStore } from './createServer'
 import { FlagService, type CreateFlagInput, type UpdateTargetingInput } from './service'
 
 /** Demo flags used by the example apps. Safe to run repeatedly: existing flags are left alone. */
-const demoFlags: { flag: CreateFlagInput; targeting: Record<string, UpdateTargetingInput> }[] = [
+type DemoFlag = {
+  flag: CreateFlagInput
+  /** Served while the flag is off, in every environment. Defaults to the last variation. */
+  offVariationId?: string
+  targeting: Record<string, UpdateTargetingInput>
+}
+
+const demoFlags: DemoFlag[] = [
   {
     flag: {
       key: 'new-checkout',
@@ -70,6 +77,7 @@ const demoFlags: { flag: CreateFlagInput; targeting: Record<string, UpdateTarget
         { id: 'fresh', name: 'Fresh', value: { accent: '#059669', radius: 14 } },
       ],
     },
+    offVariationId: 'classic',
     targeting: {
       development: { enabled: true },
       production: {
@@ -95,6 +103,7 @@ const demoFlags: { flag: CreateFlagInput; targeting: Record<string, UpdateTarget
         { id: 'pro', name: 'Pro', value: 25 },
       ],
     },
+    offVariationId: 'standard',
     targeting: {
       development: {
         enabled: true,
@@ -129,14 +138,15 @@ const service = new FlagService(store)
 await service.ensureEnvironments(config.ENVIRONMENTS, config.SDK_KEYS)
 
 const existing = new Set((await service.listFlags()).map((flag) => flag.key))
-for (const { flag, targeting } of demoFlags) {
+for (const { flag, offVariationId, targeting } of demoFlags) {
   if (existing.has(flag.key)) {
     console.log(`  skip    ${flag.key} (already exists)`)
     continue
   }
   await service.createFlag(flag, 'seed')
-  for (const [env, input] of Object.entries(targeting)) {
-    if (config.ENVIRONMENTS.includes(env)) await service.updateTargeting(flag.key, env, input, 'seed')
+  for (const env of config.ENVIRONMENTS) {
+    const input = { ...(offVariationId && { offVariationId }), ...targeting[env] }
+    if (Object.keys(input).length > 0) await service.updateTargeting(flag.key, env, input, 'seed')
   }
   console.log(`  created ${flag.key}`)
 }
