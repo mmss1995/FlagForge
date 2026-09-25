@@ -29,19 +29,14 @@ function useSubscribe(client: FlagForgeClient) {
  * The flag's value for the current context. The component re-renders only when this flag's
  * value changes, not when any other flag does.
  *
- * Object defaults are compared by reference, so hoist them out of the component when possible.
  */
 export function useFlag<T>(key: string, defaultValue: T): T {
   const client = useFlagForgeClient()
-  const latestDefault = useRef(defaultValue)
-  latestDefault.current = defaultValue
-
-  const getSnapshot = () => {
-    const detail = client.variationDetail(key, latestDefault.current)
-    // Missing flags serve the caller's default: return that exact reference so the snapshot stays stable.
-    return detail.variationId === null ? latestDefault.current : detail.value
-  }
-  return useSyncExternalStore(useSubscribe(client), getSnapshot, getSnapshot)
+  // Subscribe to the raw variation value: a stable reference from the payload, or undefined when the
+  // flag is missing. The typed read below then applies the caller's default and type check.
+  const getRawValue = () => client.variationDetail(key, undefined).value
+  useSyncExternalStore(useSubscribe(client), getRawValue, getRawValue)
+  return client.variation(key, defaultValue)
 }
 
 /** The value plus which variation was served and why. Useful for debugging and experiment analytics. */

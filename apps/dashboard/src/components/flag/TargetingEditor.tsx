@@ -1,6 +1,6 @@
 import type { EnvironmentConfig } from '@flagforge/core'
 import { AlertTriangle, Plus, Target } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { Flag } from '../../lib/api'
 import { variationLabel } from '../../lib/format'
 import { useUpdateTargeting } from '../../lib/queries'
@@ -24,12 +24,11 @@ export function TargetingEditor({ flag, env }: { flag: Flag; env: string }) {
   const staleBase = flag.updatedAt !== base.updatedAt
 
   // Pick up remote changes automatically unless there are unsaved edits to protect.
-  useEffect(() => {
-    if (staleBase && !dirty) {
-      setBase({ updatedAt: flag.updatedAt, config: saved })
-      setDraft(structuredClone(saved))
-    }
-  }, [staleBase, dirty, flag.updatedAt, saved])
+  // Adjusting state during render (not in an effect) avoids rendering the stale version first.
+  if (staleBase && !dirty) {
+    setBase({ updatedAt: flag.updatedAt, config: saved })
+    setDraft(structuredClone(saved))
+  }
 
   function reset() {
     setBase({ updatedAt: flag.updatedAt, config: saved })
