@@ -45,8 +45,9 @@ export class MemoryStore implements Store {
     return ++this.revision
   }
 
-  async deleteFlag(key: string) {
-    if (!this.flags.delete(key)) return null
+  async deleteFlag(key: string, expectedUpdatedAt: string) {
+    if (this.flags.get(key)?.updatedAt !== expectedUpdatedAt) return null
+    this.flags.delete(key)
     return ++this.revision
   }
 

@@ -1,7 +1,7 @@
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import request from 'supertest'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createServer } from '../createServer'
 import { MemoryStore } from '../store/memoryStore'
 import { ADMIN_TOKEN, testConfig } from '../test/fixtures'
@@ -132,6 +132,7 @@ describe('HTTP API', () => {
     })
 
     afterEach(async () => {
+      vi.restoreAllMocks()
       listener.closeAllConnections()
       await new Promise((resolve) => listener.close(resolve))
     })
@@ -154,6 +155,36 @@ describe('HTTP API', () => {
       await api().post('/api/environments/production/rotate-sdk-key').set(auth).expect(200)
       expect(JSON.parse(await stream.next('revoked'))).toEqual({ reason: 'sdk-key-rotated' })
       await stream.ended
+    })
+
+    it('survives a store failure while pushing changes', async () => {
+      const stream = await openStream(`${baseUrl}/sdk/stream?sdkKey=sdk-production-test`)
+      await stream.next('put')
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+      vi.spyOn(server.service, 'getSdkPayload').mockRejectedValueOnce(new Error('redis down'))
+      await api().patch('/api/flags/f/targeting/production').set(auth).send({ enabled: true }).expect(200)
+      await vi.waitFor(() => expect(errors).toHaveBeenCalledWith('[flagforge] failed to push a change to streams', expect.any(Error)))
+      await api().get('/health').expect(200)
+      stream.close()
+    })
+
+    it('forgets streams whose client left while authentication was pending', async () => {
+      const find = server.service.findEnvironmentBySdkKey.bind(server.service)
+      let release!: () => void
+      const gate = new Promise<void>((resolve) => (release = resolve))
+      vi.spyOn(server.service, 'findEnvironmentBySdkKey').mockImplementation(async (key) => {
+        await gate
+        return find(key)
+      })
+      const controller = new AbortController()
+      const pending = fetch(`${baseUrl}/sdk/stream?sdkKey=sdk-production-test`, { signal: controller.signal }).catch(() => undefined)
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      controller.abort()
+      await pending
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      release()
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(server.hub.connectionCounts()).toEqual({})
     })
 
     it('counts connections per environment', async () => {

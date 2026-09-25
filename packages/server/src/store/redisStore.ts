@@ -19,13 +19,15 @@ return redis.call('INCR', KEYS[2])
 `
 
 const DELETE_FLAG_SCRIPT = `
-if redis.call('HDEL', KEYS[1], ARGV[1]) == 0 then return -1 end
+local current = redis.call('HGET', KEYS[1], ARGV[1])
+if not current or cjson.decode(current).updatedAt ~= ARGV[2] then return -1 end
+redis.call('HDEL', KEYS[1], ARGV[1])
 return redis.call('INCR', KEYS[2])
 `
 
 type Scripts = {
   saveFlag(flagsKey: string, revisionKey: string, key: string, json: string, expected: string): Promise<number>
-  deleteFlag(flagsKey: string, revisionKey: string, key: string): Promise<number>
+  deleteFlag(flagsKey: string, revisionKey: string, key: string, expected: string): Promise<number>
 }
 
 /**
@@ -84,8 +86,8 @@ export class RedisStore implements Store {
     return revision < 0 ? null : revision
   }
 
-  async deleteFlag(key: string) {
-    const revision = await this.redis.deleteFlag(this.keys.flags, this.keys.revision, key)
+  async deleteFlag(key: string, expectedUpdatedAt: string) {
+    const revision = await this.redis.deleteFlag(this.keys.flags, this.keys.revision, key, expectedUpdatedAt)
     return revision < 0 ? null : revision
   }
 

@@ -51,7 +51,7 @@ function resolveServe(serve: Serve, flag: SdkFlag, context: EvaluationContext): 
   if (serve.kind === 'variation') return serve.variationId
 
   const attribute = serve.bucketBy ?? 'key'
-  const subject = context[attribute]
+  const subject = Object.hasOwn(context, attribute) ? context[attribute] : undefined
   // Without a bucketing value we cannot place the subject consistently, so everyone lands in the first slice.
   const position = subject == null ? 0 : bucket(flag.key, flag.salt, String(subject))
 
@@ -75,7 +75,8 @@ const negated: Partial<Record<Clause['operator'], Clause['operator']>> = {
  * like "country notIn [IT]" does not silently catch contexts that carry no country at all.
  */
 export function matchesClause(clause: Clause, context: EvaluationContext): boolean {
-  const raw: ContextValue = context[clause.attribute]
+  // Own properties only: "toString" or "constructor" must not look present on every context.
+  const raw: ContextValue = Object.hasOwn(context, clause.attribute) ? context[clause.attribute] : undefined
   if (raw == null) return false
   const actual = Array.isArray(raw) ? raw : [raw as string | number | boolean]
   if (actual.length === 0) return false

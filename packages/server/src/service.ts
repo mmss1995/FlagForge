@@ -176,8 +176,9 @@ export class FlagService {
   async deleteFlag(key: string, actor: string): Promise<void> {
     const flag = await this.getFlag(key)
     if (!flag.archived) throw new HttpError(409, 'not_archived', 'Archive the flag before deleting it')
-    const revision = await this.store.deleteFlag(key)
-    if (revision === null) throw notFound(`Flag "${key}"`)
+    // Compare-and-delete: a restore that lands between the check above and here wins.
+    const revision = await this.store.deleteFlag(key, flag.updatedAt)
+    if (revision === null) throw conflict(`Flag "${key}" was changed while deleting. Reload and try again.`)
     await this.audit({ actor, action: 'flag.deleted', flagKey: key, changes: ['deleted'] })
     await this.store.publish({ type: 'flags-changed', revision, flagKey: key })
   }

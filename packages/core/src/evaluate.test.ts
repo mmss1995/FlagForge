@@ -173,6 +173,11 @@ describe('matchesClause', () => {
     expect(matchesClause(clause('notIn', ['x']), { key: 'u', a: [] })).toBe(false)
   })
 
+  it('ignores inherited properties such as toString', () => {
+    expect(matchesClause(clause('notIn', ['x'], 'toString'), { key: 'u' })).toBe(false)
+    expect(matchesClause(clause('in', ['x'], 'constructor'), { key: 'u' })).toBe(false)
+  })
+
   it('can target the context key', () => {
     expect(matchesClause(clause('in', ['u-1'], 'key'), { key: 'u-1' })).toBe(true)
   })

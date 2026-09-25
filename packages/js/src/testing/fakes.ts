@@ -5,6 +5,7 @@ export class FakeEventSource {
   static instances: FakeEventSource[] = []
   private listeners = new Map<string, ((event: MessageEvent<string>) => void)[]>()
   closed = false
+  readyState = 1
 
   constructor(readonly url: string) {
     FakeEventSource.instances.push(this)
@@ -30,8 +31,15 @@ export class FakeEventSource {
     }
   }
 
+  /** Simulates an HTTP error response: the browser gives up and will not retry on its own. */
+  failPermanently() {
+    this.readyState = 2
+    this.emit('error')
+  }
+
   close() {
     this.closed = true
+    this.readyState = 2
   }
 }
 

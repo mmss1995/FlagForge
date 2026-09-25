@@ -16,7 +16,13 @@ export function useLiveUpdates(): LiveState {
 
   useEffect(() => {
     const source = new EventSource(api.streamUrl())
-    source.addEventListener('ready', () => setState('live'))
+    // Also fires after every reconnect: refetch whatever changed while we were offline.
+    let connectedBefore = false
+    source.addEventListener('ready', () => {
+      if (connectedBefore) void client.invalidateQueries()
+      connectedBefore = true
+      setState('live')
+    })
     source.addEventListener('error', () => setState('offline'))
     source.addEventListener('flags-changed', (event) => {
       const { flagKey } = JSON.parse((event as MessageEvent<string>).data) as { flagKey: string }

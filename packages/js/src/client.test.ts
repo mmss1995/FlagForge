@@ -50,6 +50,46 @@ describe('FlagForgeClient', () => {
       expect(client.variation('a', false)).toBe(true)
     })
 
+    it('accepts the first payload after a reconnect even if the server revision was reset', () => {
+      const client = createClient(base)
+      const source = FakeEventSource.latest()
+      source.emit('put', payload(42, booleanFlag('a')))
+      source.emit('error') // server restarts with an empty revision counter
+      source.emit('put', payload(3, booleanFlag('a', { enabled: false })))
+      expect(client.variation('a', true)).toBe(false)
+      source.emit('put', payload(2, booleanFlag('a')))
+      expect(client.variation('a', true)).toBe(false)
+    })
+
+    it('lets a live payload replace a cached one with a higher version', () => {
+      const storage = memoryStorage()
+      createClient({ ...base, storage })
+      FakeEventSource.latest().emit('put', payload(42, booleanFlag('a')))
+      const next = createClient({ ...base, storage })
+      FakeEventSource.latest().emit('put', payload(3, booleanFlag('a', { enabled: false })))
+      expect(next.variation('a', true)).toBe(false)
+    })
+
+    it('reconnects with backoff when the stream fails permanently', async () => {
+      vi.useFakeTimers()
+      const client = createClient(base)
+      const first = FakeEventSource.latest()
+      first.emit('put', payload(1, booleanFlag('a')))
+      first.failPermanently()
+      expect(client.getStatus()).toBe('stale')
+
+      await vi.advanceTimersByTimeAsync(1000)
+      const second = FakeEventSource.latest()
+      expect(second).not.toBe(first)
+      second.failPermanently()
+      await vi.advanceTimersByTimeAsync(1999)
+      expect(FakeEventSource.instances).toHaveLength(2) // backoff doubled to 2s
+      await vi.advanceTimersByTimeAsync(1)
+      FakeEventSource.latest().emit('put', payload(2, booleanFlag('a')))
+      expect(client.getStatus()).toBe('ready')
+      client.close()
+    })
+
     it('ignores malformed payloads', () => {
       const client = createClient(base)
       FakeEventSource.latest().emit('put', 'not json')
@@ -135,6 +175,14 @@ describe('FlagForgeClient', () => {
       const client = createClient({ ...base, bootstrap: payload(3, booleanFlag('a')) })
       expect(await client.ready()).toBe('stale')
       expect(client.variation('a', false)).toBe(true)
+    })
+
+    it('keeps caches apart per server and SDK key', () => {
+      const storage = memoryStorage()
+      createClient({ ...base, storage })
+      FakeEventSource.latest().emit('put', payload(1, booleanFlag('a')))
+      const otherServer = createClient({ ...base, baseUrl: 'https://other.test', storage })
+      expect(otherServer.getStatus()).toBe('initializing')
     })
 
     it('caches live payloads and starts from the cache next time', () => {

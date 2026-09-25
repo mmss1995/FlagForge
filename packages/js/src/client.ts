@@ -39,6 +39,10 @@ export interface FlagForgeOptions {
 
 type Listener = (event: ChangeEvent) => void
 
+const CLOSED = 2 // EventSource.CLOSED, without relying on the global in non-browser runtimes
+const RECONNECT_MIN_MS = 1000
+const RECONNECT_MAX_MS = 30_000
+
 /**
  * Downloads the environment's rules once and evaluates flags locally, so `variation()` is a
  * synchronous in-memory call and changing the context (login, plan upgrade) needs no round trip.
@@ -51,6 +55,10 @@ export class FlagForgeClient {
   private readyWaiters: (() => void)[] = []
   private eventSource: EventSource | undefined
   private pollTimer: ReturnType<typeof setTimeout> | undefined
+  private reconnectTimer: ReturnType<typeof setTimeout> | undefined
+  private reconnectDelayMs = RECONNECT_MIN_MS
+  /** The first payload of every (re)connection is authoritative, even if its version is lower. */
+  private acceptNextLive = true
   private readonly storageKey: string
   private readonly storage: KeyValueStorage | null
   private readonly fetchImpl: typeof fetch
@@ -62,7 +70,8 @@ export class FlagForgeClient {
     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis)
     this.logger = options.logger ?? console
     this.storage = options.storage === undefined ? defaultStorage() : options.storage
-    this.storageKey = `flagforge:${options.sdkKey.slice(-12)}`
+    // Scoped to server and key, so two environments or servers never share a cached payload.
+    this.storageKey = `flagforge:${trimSlash(options.baseUrl)}:${options.sdkKey}`
 
     const initial = options.bootstrap ?? this.readCache()
     if (initial) this.apply(initial, 'stale')
@@ -139,6 +148,7 @@ export class FlagForgeClient {
   close(): void {
     this.eventSource?.close()
     clearTimeout(this.pollTimer)
+    clearTimeout(this.reconnectTimer)
     this.setStatus('closed')
     this.listeners.clear()
   }
@@ -149,11 +159,16 @@ export class FlagForgeClient {
     const url = `${trimSlash(this.options.baseUrl)}/sdk/stream?sdkKey=${encodeURIComponent(this.options.sdkKey)}`
     const source = new EventSourceImpl(url)
     this.eventSource = source
+    this.acceptNextLive = true
 
     source.addEventListener('put', (event) => {
       const payload = parsePayload((event as MessageEvent<string>).data)
-      if (payload) this.apply(payload, 'ready')
-      else this.logger.warn('[flagforge] ignoring malformed payload from stream')
+      if (!payload) return this.logger.warn('[flagforge] ignoring malformed payload from stream')
+      // After a reconnect the server may have restarted with a fresh revision counter; within one
+      // connection, versions only go up, so anything lower is a stale overlap.
+      this.apply(payload, 'ready', this.acceptNextLive)
+      this.acceptNextLive = false
+      this.reconnectDelayMs = RECONNECT_MIN_MS
     })
 
     source.addEventListener('revoked', () => {
@@ -162,10 +177,17 @@ export class FlagForgeClient {
       this.setStatus(this.payload ? 'stale' : 'error')
     })
 
-    // EventSource reconnects on its own; we only reflect the outage in the status.
     source.addEventListener('error', () => {
-      if (this.status === 'closed') return
+      if (this.status === 'closed' || source !== this.eventSource) return
+      this.acceptNextLive = true
       this.setStatus(this.payload ? 'stale' : 'error')
+      // Network errors are retried by the browser itself, but an HTTP error response (a 502 during a
+      // deploy) closes the EventSource for good. Then we reconnect ourselves, with backoff.
+      if (source.readyState === CLOSED) {
+        source.close()
+        this.reconnectTimer = setTimeout(() => this.connect(EventSourceImpl), this.reconnectDelayMs)
+        this.reconnectDelayMs = Math.min(this.reconnectDelayMs * 2, RECONNECT_MAX_MS)
+      }
     })
   }
 
@@ -177,7 +199,8 @@ export class FlagForgeClient {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const payload = parsePayload(await res.text())
       if (!payload) throw new Error('malformed payload')
-      this.apply(payload, 'ready')
+      // Polls run one after another, so each response is the latest snapshot.
+      this.apply(payload, 'ready', true)
     } catch (error) {
       if (this.status === 'closed') return
       this.logger.warn(`[flagforge] could not fetch flags: ${(error as Error).message}`)
@@ -190,10 +213,9 @@ export class FlagForgeClient {
 
   // ─── State ─────────────────────────────────────────────────────────────────
 
-  private apply(payload: SdkPayload, status: ClientStatus): void {
+  private apply(payload: SdkPayload, status: ClientStatus, authoritative = false): void {
     if (this.status === 'closed') return
-    // Streams and polls can overlap; never go back in time.
-    if (this.payload && payload.version < this.payload.version) return
+    if (!authoritative && this.payload && payload.version < this.payload.version) return
 
     const before = this.snapshot()
     this.payload = payload

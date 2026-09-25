@@ -6,7 +6,7 @@ export function describeChanges(before: Flag, after: Flag): string[] {
 
   if (before.name !== after.name) changes.push(`name: "${before.name}" → "${after.name}"`)
   if (before.description !== after.description) changes.push('description updated')
-  if (before.tags.join() !== after.tags.join()) changes.push(`tags: [${before.tags.join(', ')}] → [${after.tags.join(', ')}]`)
+  if (JSON.stringify(before.tags) !== JSON.stringify(after.tags)) changes.push(`tags: [${before.tags.join(', ')}] → [${after.tags.join(', ')}]`)
   if (JSON.stringify(before.variations) !== JSON.stringify(after.variations)) changes.push(describeVariations(before, after))
   if (before.archived !== after.archived) changes.push(after.archived ? 'archived' : 'restored')
 

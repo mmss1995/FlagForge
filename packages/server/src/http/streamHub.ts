@@ -27,7 +27,10 @@ export class StreamHub {
   ) {}
 
   async start(): Promise<void> {
-    this.unsubscribe = await this.store.subscribe((event) => void this.onStoreEvent(event))
+    this.unsubscribe = await this.store.subscribe((event) => {
+      // A store outage while fanning out must not take the process down; SDKs keep their last payload.
+      this.onStoreEvent(event).catch((error) => console.error('[flagforge] failed to push a change to streams', error))
+    })
     this.heartbeat = setInterval(() => {
       // A comment line keeps proxies and load balancers from closing idle connections.
       for (const res of this.allResponses()) res.write(': ping\n\n')
@@ -36,15 +39,23 @@ export class StreamHub {
   }
 
   async addSdkClient(res: Response, environment: string, sdkKey: string): Promise<void> {
+    // Authentication awaited the store: the client may already be gone, and its 'close' event with it.
+    if (isGone(res)) return
     openStream(res)
     const client = { res, environment, sdkKey }
     this.sdkClients.add(client)
     res.on('close', () => this.sdkClients.delete(client))
     const payload = await this.service.getSdkPayload(environment)
     send(res, 'put', payload, payload.version)
+
+    // A rotation may have landed between authentication and registration, after its revocation
+    // sweep already ran. Re-checking once registered closes that window.
+    const current = await this.store.getEnvironment(environment)
+    if (current?.sdkKey !== sdkKey) this.revoke(client)
   }
 
   addAdminClient(res: Response): void {
+    if (isGone(res)) return
     openStream(res)
     this.adminClients.add(res)
     res.on('close', () => this.adminClients.delete(res))
@@ -99,18 +110,24 @@ export class StreamHub {
   private async dropRevokedClients(environment: string): Promise<void> {
     const env = await this.store.getEnvironment(environment)
     for (const client of this.sdkClients) {
-      if (client.environment === environment && client.sdkKey !== env?.sdkKey) {
-        send(client.res, 'revoked', { reason: 'sdk-key-rotated' })
-        client.res.end()
-        this.sdkClients.delete(client)
-      }
+      if (client.environment === environment && client.sdkKey !== env?.sdkKey) this.revoke(client)
     }
+  }
+
+  private revoke(client: SdkClient): void {
+    if (!this.sdkClients.delete(client)) return
+    send(client.res, 'revoked', { reason: 'sdk-key-rotated' })
+    client.res.end()
   }
 
   private *allResponses(): Iterable<Response> {
     for (const client of this.sdkClients) yield client.res
     yield* this.adminClients
   }
+}
+
+function isGone(res: Response): boolean {
+  return res.req.destroyed || res.writableEnded
 }
 
 function openStream(res: Response): void {

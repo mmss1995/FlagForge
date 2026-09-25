@@ -169,6 +169,24 @@ describe('FlagService', () => {
       expect((await service.listAudit({ limit: 3 })).map((e) => e.action)).toEqual(['flag.deleted', 'flag.archived', 'flag.created'])
     })
 
+    it('refuses to delete a flag restored between the check and the delete', async () => {
+      await service.updateFlag('f', { archived: true }, 'me')
+      const getFlag = store.getFlag.bind(store)
+      vi.spyOn(store, 'getFlag').mockImplementationOnce(async (key) => {
+        const archived = await getFlag(key)
+        await service.updateFlag('f', { archived: false }, 'bob') // a teammate restores it meanwhile
+        return archived
+      })
+      await expect(service.deleteFlag('f', 'me')).rejects.toMatchObject({ status: 409 })
+      expect((await service.getFlag('f')).archived).toBe(false)
+    })
+
+    it('records tag changes even when the joined text is identical', async () => {
+      await service.updateFlag('f', { tags: ['a,b'] }, 'me')
+      const flag = await service.updateFlag('f', { tags: ['a', 'b'] }, 'me')
+      expect(flag.tags).toEqual(['a', 'b'])
+    })
+
     it('hides archived flags from SDK payloads', async () => {
       await service.updateFlag('f', { archived: true }, 'me')
       expect((await service.getSdkPayload('production')).flags).toEqual({})

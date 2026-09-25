@@ -59,10 +59,13 @@ describe.each(implementations)('%s', (_name, create, enabled) => {
     expect(await store.saveFlag(makeFlag(), '2026-09-25T10:00:00.000Z')).toBeNull()
   })
 
-  it.runIf(enabled)('deletes flags and bumps the revision', async () => {
-    await store.saveFlag(makeFlag(), null)
-    expect(await store.deleteFlag('new-checkout')).toBe(2)
-    expect(await store.deleteFlag('new-checkout')).toBeNull()
+  it.runIf(enabled)('deletes flags only at the expected version, and bumps the revision', async () => {
+    const flag = makeFlag()
+    await store.saveFlag(flag, null)
+    expect(await store.deleteFlag('new-checkout', '2026-01-01T00:00:00.000Z')).toBeNull()
+    expect(await store.getFlag('new-checkout')).toBeDefined()
+    expect(await store.deleteFlag('new-checkout', flag.updatedAt)).toBe(2)
+    expect(await store.deleteFlag('new-checkout', flag.updatedAt)).toBeNull()
     expect(await store.getFlag('new-checkout')).toBeUndefined()
   })
 

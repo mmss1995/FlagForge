@@ -47,8 +47,11 @@ export interface Store {
    * flag must still carry it (optimistic locking). Returns the new revision, or `null` on conflict.
    */
   saveFlag(flag: Flag, expectedUpdatedAt: string | null): Promise<number | null>
-  /** Deletes a flag and bumps the revision. Returns the new revision, or `null` if it did not exist. */
-  deleteFlag(key: string): Promise<number | null>
+  /**
+   * Deletes a flag and bumps the revision, only if it still carries `expectedUpdatedAt`.
+   * Returns the new revision, or `null` if it is missing or was changed in the meantime.
+   */
+  deleteFlag(key: string, expectedUpdatedAt: string): Promise<number | null>
   getRevision(): Promise<number>
 
   appendAudit(entry: AuditEntry): Promise<void>
